@@ -74,6 +74,15 @@ namespace OpenKh.Tools.Kh2SystemEditor.ViewModels
             public EnumModel<Trsr.TrsrType> Types { get; }
 
             public override string ToString() => Title;
+
+            public void RefreshMessages()
+            {
+                OnPropertyChanged(nameof(Title));
+                OnPropertyChanged(nameof(Query));
+                OnPropertyChanged(nameof(IdText));
+                OnPropertyChanged(nameof(MapName));
+                OnPropertyChanged(nameof(ItemName));
+            }
         }
 
         private const string entryName = "trsr";
@@ -112,7 +121,7 @@ namespace OpenKh.Tools.Kh2SystemEditor.ViewModels
         public Stream CreateStream()
         {
             var stream = new MemoryStream();
-            Trsr.Write(stream, this.Select(x => x.Treasure));
+            Trsr.Write(stream, UnfilteredItems.Select(x => x.Treasure));
 
             return stream;
         }
@@ -154,6 +163,14 @@ namespace OpenKh.Tools.Kh2SystemEditor.ViewModels
         {
             var query = arg.Query.ToUpper();
             return SearchTerm.ToUpper().Split(new char[] { ',', ' ' }).All(term => query.Contains(term));
+        }
+
+        public void RefreshAllMessages()
+        {
+            foreach (var item in Items)
+            {
+                item.RefreshMessages();
+            }
         }
     }
 }

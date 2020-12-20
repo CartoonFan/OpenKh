@@ -64,7 +64,7 @@ namespace OpenKh.Command.IdxImg
 
             [Required]
             [FileExists]
-            [Argument(0, Description = "Kingdom Hearts II IDX file, paired with a IMG")]
+            [Argument(0, Description = "Kingdom Hearts II IDX file")]
             public string InputIdx { get; set; }
 
             [FileExists]
@@ -80,10 +80,13 @@ namespace OpenKh.Command.IdxImg
             [Option(CommandOptionType.NoValue, Description = "Split sub-IDX when extracting recursively", ShortName = "s", LongName = "split")]
             public bool Split { get; set; }
 
+            [Option(CommandOptionType.NoValue, Description = "Do not extract files that are already found in the destination directory", ShortName = "n")]
+            public bool DoNotExtractAgain { get; set; }
+
             protected int OnExecute(CommandLineApplication app)
             {
                 var inputImg = InputImg ?? InputIdx.Replace(".idx", ".img", StringComparison.InvariantCultureIgnoreCase);
-                var outputDir = OutputDir ?? Path.Combine(Path.GetFullPath(inputImg), "extract");
+                var outputDir = OutputDir ?? Path.Combine(Path.GetDirectoryName(inputImg), "extract");
 
                 var idxEntries = OpenIdx(InputIdx);
 
@@ -92,13 +95,21 @@ namespace OpenKh.Command.IdxImg
                     var img = new Img(imgStream, idxEntries, false);
                     var idxName = Path.GetFileNameWithoutExtension(InputIdx);
 
-                    var subIdxPath = ExtractIdx(img, idxEntries, Recursive && Split ? Path.Combine(outputDir, "KH2") : outputDir);
+                    var subIdxPath = ExtractIdx(
+                        img,
+                        idxEntries,
+                        Recursive && Split ? Path.Combine(outputDir, "KH2") : outputDir,
+                        DoNotExtractAgain);
                     if (Recursive)
                     {
                         foreach (var idxFileName in subIdxPath)
                         {
                             idxName = Path.GetFileNameWithoutExtension(idxFileName);
-                            ExtractIdx(img, OpenIdx(idxFileName), Split ? Path.Combine(outputDir, idxName) : outputDir);
+                            ExtractIdx(
+                                img,
+                                OpenIdx(idxFileName),
+                                Split ? Path.Combine(outputDir, idxName) : outputDir,
+                                DoNotExtractAgain);
                         }
                     }
                 }
@@ -106,7 +117,11 @@ namespace OpenKh.Command.IdxImg
                 return 0;
             }
 
-            public static List<string> ExtractIdx(Img img, IEnumerable<Idx.Entry> idxEntries, string basePath)
+            public static List<string> ExtractIdx(
+                Img img,
+                IEnumerable<Idx.Entry> idxEntries,
+                string basePath,
+                bool doNotExtractAgain)
             {
                 var idxs = new List<string>();
 
@@ -116,13 +131,15 @@ namespace OpenKh.Command.IdxImg
                     if (fileName == null)
                         fileName = $"@noname/{entry.Hash32:X08}-{entry.Hash16:X04}";
 
-                    Console.WriteLine(fileName);
-
                     var outputFile = Path.Combine(basePath, fileName);
+                    if (doNotExtractAgain && File.Exists(outputFile))
+                        continue;
+
                     var outputDir = Path.GetDirectoryName(outputFile);
                     if (Directory.Exists(outputDir) == false)
                         Directory.CreateDirectory(outputDir);
 
+                    Console.WriteLine(fileName);
                     using (var file = File.Create(outputFile))
                     {
                         // TODO handle decompression
@@ -271,6 +288,9 @@ namespace OpenKh.Command.IdxImg
         private static IEnumerable<Idx.Entry> OpenIdx(string fileName)
         {
             using var idxStream = File.OpenRead(fileName);
+            if (!Idx.IsValid(idxStream))
+                throw new CustomException($"The IDX {fileName} is invalid or not recognized.");
+
             return Idx.Read(idxStream);
         }
     }

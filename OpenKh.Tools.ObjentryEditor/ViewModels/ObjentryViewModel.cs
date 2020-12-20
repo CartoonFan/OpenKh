@@ -74,20 +74,14 @@ namespace OpenKh.Tools.ObjentryEditor.ViewModels
         }
 
 
-        private readonly int _type;
         private string _searchTerm;
 
         public EnumModel<Objentry.Type> ObjEntryTypes { get; }
         public EnumModel<Objentry.CommandMenuOptions> CommandMenuOptions { get; }
 
-        public ObjentryViewModel(BaseTable<Objentry> objentry) :
-            this(objentry.Id, objentry.Items)
-        { }
-
-        public ObjentryViewModel(int type, IEnumerable<Objentry> items) :
+        public ObjentryViewModel(IEnumerable<Objentry> items) :
             base(items.Select(Map))
         {
-            _type = type;
             ObjEntryTypes = new EnumModel<Objentry.Type>();
             CommandMenuOptions = new EnumModel<Objentry.CommandMenuOptions>();
             AddAndSelectCommand = new RelayCommand(x =>
@@ -102,10 +96,32 @@ namespace OpenKh.Tools.ObjentryEditor.ViewModels
                 Items.Add(new ObjentryEntryViewModel(clonedItem));
                 OnPropertyChanged(nameof(Items));
             }, x => SelectedItem != null);
+
+            ClearObject1 = new RelayCommand(x =>
+            {
+                SelectedItem.SpawnObject1 = 0;
+                OnPropertyChanged(nameof(SelectedItem));
+            });
+
+            ClearObject2 = new RelayCommand(x =>
+            {
+                SelectedItem.SpawnObject2 = 0;
+                OnPropertyChanged(nameof(SelectedItem));
+            });
+
+            ClearObject3 = new RelayCommand(x =>
+            {
+                SelectedItem.SpawnObject3 = 0;
+                OnPropertyChanged(nameof(SelectedItem));
+            });
         }
 
         public RelayCommand AddAndSelectCommand { get; set; }
         public RelayCommand CloneCommand { get; set; }
+
+        public RelayCommand ClearObject1 { get; set; }
+        public RelayCommand ClearObject2 { get; set; }
+        public RelayCommand ClearObject3 { get; set; }
 
         public Visibility IsItemEditingVisible => IsItemSelected ? Visibility.Visible : Visibility.Collapsed;
         public Visibility IsItemEditMessageVisible => !IsItemSelected ? Visibility.Visible : Visibility.Collapsed;

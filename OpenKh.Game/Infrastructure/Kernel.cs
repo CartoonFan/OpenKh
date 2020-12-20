@@ -1,32 +1,54 @@
-﻿using OpenKh.Common;
+using OpenKh.Common;
 using OpenKh.Common.Archives;
 using OpenKh.Engine;
 using OpenKh.Engine.Extensions;
 using OpenKh.Engine.Renders;
+using OpenKh.Game.Debugging;
 using OpenKh.Kh2;
 using OpenKh.Kh2.Battle;
 using OpenKh.Kh2.Contextes;
+using OpenKh.Kh2.Extensions;
 using OpenKh.Kh2.System;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace OpenKh.Game.Infrastructure
 {
     public class Kernel : ILanguage
     {
-        private readonly IDataContent _dataContent;
+        private readonly int _regionId;
 
+        public bool IsFinalMix { get; }
         public bool IsReMix { get; }
-        public int RegionId { get; }
-        public string Language => Constants.Regions[RegionId == Constants.RegionFinalMix ? 0 : RegionId];
+        public int RegionId
+        {
+            get => Config.RegionId == -1 ? _regionId : Config.RegionId;
+            set => Config.RegionId = value;
+        }
+        public string Language
+        {
+            get
+            {
+                int languageId;
+                if (RegionId == Constants.RegionFinalMix) // Final mix should load JP assets
+                    languageId = 0;
+                else if (RegionId == 2) // UK region should load US assets
+                    languageId = 1;
+                else
+                    languageId = RegionId;
+
+                return Constants.Regions[languageId];
+            }
+        }
+
         public string Region => Constants.Regions[RegionId];
+        public IDataContent DataContent { get; }
         public FontContext FontContext { get; }
         public RenderingMessageContext SystemMessageContext { get; set; }
         public RenderingMessageContext EventMessageContext { get; set; }
         public Kh2MessageProvider MessageProvider { get; }
-        public BaseTable<Objentry> ObjEntries { get; }
+        public List<Objentry> ObjEntries { get; }
         public Dictionary<string, List<Place>> Places { get; }
         public List<Ftst.Entry> Ftst { get; private set; }
         public Item Item { get; private set; }
@@ -36,12 +58,19 @@ namespace OpenKh.Game.Infrastructure
 
         public Kernel(IDataContent dataContent)
         {
-            _dataContent = dataContent;
+            Log.Info("Initialize kernel");
+            DataContent = dataContent;
 
             FontContext = new FontContext();
             MessageProvider = new Kh2MessageProvider();
-            RegionId = DetectRegion(dataContent);
+            _regionId = DetectRegion(dataContent);
+            Log.Info($"Region={Region} Language={Language}");
+
             IsReMix = IsReMixFileExists(dataContent, Region);
+            Log.Info($"ReMIX={IsReMix}");
+
+            IsFinalMix = IsReMix || RegionId == Constants.RegionFinalMix;
+            Log.Info($"Final Mix={IsFinalMix}");
 
             // Load files in the same order as KH2 does
             ObjEntries = LoadFile("00objentry.bin", stream => Objentry.Read(stream));
@@ -60,45 +89,51 @@ namespace OpenKh.Game.Infrastructure
             LoadMessage("sys");
             // 15jigsaw
 
-            if (Language == "jp")
+            if (Language == "jp" && Config.EnforceInternationalTextEncoding == false)
             {
+                Log.Info($"Use Japanese text encoding");
                 SystemMessageContext = FontContext.ToKh2JpSystemTextContext();
                 EventMessageContext = FontContext.ToKh2JpEventTextContext();
             }
             else
             {
+                Log.Info($"Use International text encoding");
                 SystemMessageContext = FontContext.ToKh2EuSystemTextContext();
                 EventMessageContext = FontContext.ToKh2EuEventTextContext();
             }
+            MessageProvider.Encoder = SystemMessageContext.Encoder;
         }
+
+        public string GetMapFileName(int worldIndex, int placeIndex) => IsReMix
+            ? $"map/{Constants.WorldIds[worldIndex]}{placeIndex:D02}.map"
+            : $"map/{Language}/{Constants.WorldIds[worldIndex]}{placeIndex:D02}.map";
 
         private T LoadFile<T>(string fileName, Func<Stream, T> action)
         {
-            using var stream = _dataContent.FileOpen(fileName);
+            using var stream = DataContent.FileOpen(fileName);
             return action(stream);
         }
 
         private void LoadSystem(string fileName)
         {
-            var bar = _dataContent.FileOpen(fileName).Using(stream => Bar.Read(stream));
+            var bar = DataContent.FileOpen(fileName).Using(stream => Bar.Read(stream));
 
-            bar.ForEntry("ftst", stream => Ftst = Kh2.System.Ftst.Read(stream));
-            bar.ForEntry("item", stream => Item = Kh2.System.Item.Read(stream));
-            bar.ForEntry("tsrs", stream => Trsr = Kh2.System.Trsr.Read(stream));
+            Ftst = bar.ForEntry("ftst", Bar.EntryType.List, Kh2.System.Ftst.Read);
+            Item = bar.ForEntry("item", Bar.EntryType.List, Kh2.System.Item.Read);
+            Trsr = bar.ForEntry("tsrs", Bar.EntryType.List, Kh2.System.Trsr.Read);
         }
 
         private void LoadBattle(string fileName)
         {
-            var bar = _dataContent.FileOpen(fileName).Using(stream => Bar.Read(stream));
+            var bar = DataContent.FileOpen(fileName).Using(stream => Bar.Read(stream));
 
-            bar.ForEntry("fmlv", stream => Fmlv = Kh2.Battle.Fmlv.Read(stream));
-            bar.ForEntry("lvup", stream => Lvup = Kh2.Battle.Lvup.Read(stream).Characters);
+            Fmlv = bar.ForEntry("fmlv", Bar.EntryType.List, Kh2.Battle.Fmlv.Read);
+            Lvup = bar.ForEntry("lvup", Bar.EntryType.List, Kh2.Battle.Lvup.Read)?.Characters;
         }
 
         private void LoadFontInfo(string fileName)
         {
-            var bar = _dataContent.FileOpen(fileName)
-                .Using(stream => Bar.Read(stream));
+            var bar = DataContent.FileOpen(fileName).Using(Bar.Read);
             FontContext.Read(bar);
         }
 
@@ -107,10 +142,10 @@ namespace OpenKh.Game.Infrastructure
 
         private void LoadMessage(string worldId)
         {
-            var messageBar = _dataContent.FileOpen($"msg/{Language}/sys.bar")
+            var messageBar = DataContent.FileOpen($"msg/{Language}/sys.bar")
                 .Using(stream => Bar.Read(stream));
 
-            MessageProvider.Load(messageBar.ForEntry(worldId, stream => Msg.Read(stream)));
+            MessageProvider.Load(messageBar.ForEntry(worldId, Bar.EntryType.List, Msg.Read));
         }
 
         private static int DetectRegion(IDataContent dataContent)
@@ -119,7 +154,10 @@ namespace OpenKh.Game.Infrastructure
             {
                 var testFileName = $"menu/{Constants.Regions[i]}/title.2ld";
                 if (dataContent.FileExists(testFileName))
+                {
+                    Log.Info($"Region ID candidate: {i}");
                     return i;
+                }
             }
 
             throw new Exception("Unable to detect any region for the game. Some files are potentially missing.");

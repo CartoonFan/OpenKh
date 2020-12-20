@@ -181,7 +181,7 @@ namespace OpenKh.Imaging
 			public int TW
             {
                 get => GetBits(Data, 26, 4);
-                set => SetBits(Data, 26, 4, value);
+                set => Data = SetBits(Data, 26, 4, value);
             }
 
             /// <summary>
@@ -190,7 +190,7 @@ namespace OpenKh.Imaging
             public int TH
             {
                 get => GetBits(Data, 30, 4);
-                set => SetBits(Data, 30, 4, value);
+                set => Data = SetBits(Data, 30, 4, value);
             }
 
 			public bool TCC
@@ -330,8 +330,11 @@ namespace OpenKh.Imaging
                 throw new NotImplementedException("Mipmaps are not currently supported.");
             }
 
-			_imageData = stream.ReadBytes(picture.ImageSize);
-			_clutData = stream.ReadBytes(picture.ClutSize);
+            // picture.ClutSize is not valid for KH2 map radar.
+            var clutDataSize = 4 * picture.ClutColorCount;
+
+            _imageData = stream.ReadBytes(picture.ImageSize);
+            _clutData = stream.ReadBytes(clutDataSize);
             if (IsClutSwizzled)
                 _clutData = SortClut(_clutData, ClutFormat, picture.ClutColorCount);
 

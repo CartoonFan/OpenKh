@@ -12,7 +12,6 @@ namespace OpenKh.Tools.Kh2BattleEditor.ViewModels
 {
     public class FmlvViewModel : GenericListModel<FmlvFormViewModel>, IBattleGetChanges
     {
-        private const int DefaultType = 2;
         private const string entryName = "fmlv";
         
         public string EntryName => entryName;
@@ -37,7 +36,7 @@ namespace OpenKh.Tools.Kh2BattleEditor.ViewModels
         public Stream CreateStream()
         {
             var stream = new MemoryStream();
-            Fmlv.Write(stream, Items.SelectMany(form => form).Select(x => x.Level).ToList());
+            Fmlv.Write(stream, UnfilteredItems.SelectMany(form => form).Select(x => x.Level).ToList());
             return stream;
         }
     }

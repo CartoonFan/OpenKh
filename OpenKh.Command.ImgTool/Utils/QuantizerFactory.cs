@@ -1,17 +1,31 @@
 ﻿using nQuant;
 using OpenKh.Command.ImgTool.Interfaces;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Text;
 
 namespace OpenKh.Command.ImgTool.Utils
 {
-    static class QuantizerFactory
+    public class QuantizerFactory
     {
+        private class CommonQuantizerParam : ICommonQuantizerParam
+        {
+            public int BitsPerPixel { get; set; }
+
+            public bool PngQuant { get; set; }
+        }
+
+        public static Func<Bitmap, Bitmap> MakeFrom(int BitsPerPixel, bool InvokePngquant) =>
+            MakeFrom(
+                new CommonQuantizerParam
+                {
+                    BitsPerPixel = BitsPerPixel,
+                    PngQuant = InvokePngquant,
+                }
+            );
+
         public static Func<Bitmap, Bitmap> MakeFrom(ICommonQuantizerParam param)
         {
             return bitmap =>
@@ -32,12 +46,13 @@ namespace OpenKh.Command.ImgTool.Utils
                                     RedirectStandardInput = true,
                                     RedirectStandardOutput = true,
                                 };
-                                var p = Process.Start(psi);
+                                using var p = Process.Start(psi);
                                 using (var temp = new MemoryStream())
                                 {
                                     bitmap.Save(temp, ImageFormat.Png);
                                     temp.Position = 0;
                                     temp.CopyTo(p.StandardInput.BaseStream);
+                                    p.StandardInput.BaseStream.Close(); // prevent pngquant from blocking.
                                 }
                                 var newBitmap = new Bitmap(p.StandardOutput.BaseStream);
                                 return newBitmap;
@@ -46,8 +61,8 @@ namespace OpenKh.Command.ImgTool.Utils
                             {
                                 return (Bitmap)new WuQuantizer().QuantizeImage(
                                     new Bitmap(bitmap), // make sure it is 32 bpp, not 24 bpp
-                                    alphaThreshold: 10, // default
-                                    alphaFader: 70, // default
+                                    alphaThreshold: -1,
+                                    alphaFader: 1,
                                     maxColors
                                 );
                                 // I believe that nQuant never throws exception.

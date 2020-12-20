@@ -10,7 +10,7 @@ namespace OpenKh.Kh2.Battle
         [Data] public byte ActionId { get; set; }
         [Data] public byte Priority { get; set; }
         [Data] public byte Unknown03 { get; set; } //Padding?
-        [Data(offset: 4, count: 5)] public List<Voice> Voices { get; set; }
+        [Data(Count = 5)] public List<Voice> Voices { get; set; }
 
         public class Voice
         {
@@ -18,6 +18,9 @@ namespace OpenKh.Kh2.Battle
             [Data] public sbyte Weight { get; set; } //(0 = normal random; 100 = guaranteed run)
         }
 
-        public static BaseBattle<Vtbl> Read(Stream stream) => BaseBattle<Vtbl>.Read(stream);
+        public static List<Vtbl> Read(Stream stream) => BaseTable<Vtbl>.Read(stream);
+
+        public static void Write(Stream stream, IEnumerable<Vtbl> items) =>
+            BaseTable<Vtbl>.Write(stream, 1, items);
     }
 }

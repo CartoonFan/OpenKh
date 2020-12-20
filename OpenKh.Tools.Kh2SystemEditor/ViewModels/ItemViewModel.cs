@@ -70,12 +70,19 @@ namespace OpenKh.Tools.Kh2SystemEditor.ViewModels
             public EnumModel<Item.Rank> Ranks { get; }
 
             public override string ToString() => Title;
+
+            public void RefreshMessages()
+            {
+                OnPropertyChanged(nameof(Title));
+                OnPropertyChanged(nameof(Name));
+                OnPropertyChanged(nameof(Description));
+            }
         }
 
         private const string entryName = "item";
+        private readonly IMessageProvider _messageProvider;
+        private readonly List<Item.Stat> _item2;
         private string _searchTerm;
-        private IMessageProvider _messageProvider;
-        private List<Item.Stat> _item2;
 
         public ItemViewModel(IMessageProvider messageProvider, IEnumerable<Bar.Entry> entries) :
             this(messageProvider, Item.Read(entries.GetBinaryStream(entryName)))
@@ -122,7 +129,7 @@ namespace OpenKh.Tools.Kh2SystemEditor.ViewModels
             var stream = new MemoryStream();
             new Item
             {
-                Items1 = this.Select(x => x.Item).ToList(),
+                Items1 = UnfilteredItems.Select(x => x.Item).ToList(),
                 Items2 = _item2
             }.Write(stream);
 
@@ -172,5 +179,13 @@ namespace OpenKh.Tools.Kh2SystemEditor.ViewModels
 
         private bool FilterByName(Entry arg) =>
             arg.Title.ToUpper().Contains(SearchTerm.ToUpper());
+
+        public void RefreshAllMessages()
+        {
+            foreach (var item in Items)
+            {
+                item.RefreshMessages();
+            }
+        }
     }
 }

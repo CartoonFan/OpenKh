@@ -1,21 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Diagnostics.Contracts;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
-using nQuant;
 using OpenKh.Common;
-using OpenKh.Imaging;
 using OpenKh.Kh2;
+using static System.Drawing.Imaging.PixelFormat;
 
-namespace OpenKh.Command.ImgTool.Utils
+namespace OpenKh.Kh2.Utils
 {
-    class ImgdBitmapUtil
+    public class ImgdBitmapUtil
     {
         public static Bitmap ToBitmap(Imgd imgd)
         {
@@ -23,7 +19,7 @@ namespace OpenKh.Command.ImgTool.Utils
             {
                 case Imaging.PixelFormat.Indexed4:
                     {
-                        var bitmap = new Bitmap(imgd.Size.Width, imgd.Size.Height, System.Drawing.Imaging.PixelFormat.Format4bppIndexed);
+                        var bitmap = new Bitmap(imgd.Size.Width, imgd.Size.Height, PixelFormat.Format4bppIndexed);
                         var dest = bitmap.LockBits(new Rectangle(Point.Empty, bitmap.Size), ImageLockMode.WriteOnly, bitmap.PixelFormat);
                         try
                         {
@@ -59,7 +55,7 @@ namespace OpenKh.Command.ImgTool.Utils
                     }
                 case Imaging.PixelFormat.Indexed8:
                     {
-                        var bitmap = new Bitmap(imgd.Size.Width, imgd.Size.Height, System.Drawing.Imaging.PixelFormat.Format8bppIndexed);
+                        var bitmap = new Bitmap(imgd.Size.Width, imgd.Size.Height, PixelFormat.Format8bppIndexed);
                         var dest = bitmap.LockBits(new Rectangle(Point.Empty, bitmap.Size), ImageLockMode.WriteOnly, bitmap.PixelFormat);
                         try
                         {
@@ -94,7 +90,7 @@ namespace OpenKh.Command.ImgTool.Utils
                     }
                 case Imaging.PixelFormat.Rgba8888:
                     {
-                        var bitmap = new Bitmap(imgd.Size.Width, imgd.Size.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                        var bitmap = new Bitmap(imgd.Size.Width, imgd.Size.Height, PixelFormat.Format32bppPArgb);
                         var dest = bitmap.LockBits(new Rectangle(Point.Empty, bitmap.Size), ImageLockMode.WriteOnly, bitmap.PixelFormat);
                         try
                         {
@@ -123,7 +119,7 @@ namespace OpenKh.Command.ImgTool.Utils
                 Width = bitmap.Width;
                 Height = bitmap.Height;
 
-                var src = bitmap.LockBits(new Rectangle(Point.Empty, bitmap.Size), ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                var src = bitmap.LockBits(new Rectangle(Point.Empty, bitmap.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
                 var srcBits = new byte[src.Stride * src.Height];
                 try
                 {
@@ -149,6 +145,16 @@ namespace OpenKh.Command.ImgTool.Utils
             public List<uint> Pixels { get; }
             public int Width { get; }
             public int Height { get; }
+        }
+
+        static class PaletteColorUsageCounter
+        {
+            public static bool IfMaxColorCountIsOver(List<uint> pixels, int maxColors)
+            {
+                return pixels
+                    .GroupBy(pixel => pixel)
+                    .Count() > maxColors;
+            }
         }
 
         class PaletteGenerator
@@ -200,11 +206,16 @@ namespace OpenKh.Command.ImgTool.Utils
             }
         }
 
-        public static Imgd ToImgd(Bitmap bitmap, int bpp, Func<Bitmap, Bitmap> quantizer)
+        public static Imgd ToImgd(Bitmap bitmap, int bpp, Func<Bitmap, Bitmap> quantizer, bool swizzle = false)
         {
             if (quantizer != null)
             {
-                bitmap = quantizer(bitmap);
+                var firstSrc = new ReadAs32bppPixels(bitmap);
+
+                if (PaletteColorUsageCounter.IfMaxColorCountIsOver(firstSrc.Pixels, 1 << bpp))
+                {
+                    bitmap = quantizer(bitmap);
+                }
             }
 
             switch (bpp)
@@ -224,7 +235,7 @@ namespace OpenKh.Command.ImgTool.Utils
                             );
                         }
 
-                        var destBits = new byte[src.Width * src.Height];
+                        var destBits = new byte[(src.Width * src.Height + 1) / 2];
                         var clut = new byte[4 * maxColors];
 
                         for (int index = 0; index < newPalette.MostUsedPixels.Length; index++)
@@ -247,18 +258,18 @@ namespace OpenKh.Command.ImgTool.Utils
                                 var newPixel = newPalette.FindNearest(src.Pixels[srcPointer++]) & 15;
                                 if (0 == (x & 1))
                                 {
-                                    // hi byte
+                                    // first pixel: hi byte
                                     destBits[destPointer] = (byte)(newPixel << 4);
                                 }
                                 else
                                 {
-                                    // lo byte
+                                    // second pixel: lo byte
                                     destBits[destPointer++] |= (byte)(newPixel);
                                 }
                             }
                         }
 
-                        return Imgd.Create(bitmap.Size, Imaging.PixelFormat.Indexed4, destBits, clut, false);
+                        return Imgd.Create(bitmap.Size, Imaging.PixelFormat.Indexed4, destBits, clut, swizzle);
                     }
                 case 8:
                     {
@@ -299,7 +310,7 @@ namespace OpenKh.Command.ImgTool.Utils
                             }
                         }
 
-                        return Imgd.Create(bitmap.Size, Imaging.PixelFormat.Indexed8, destBits, clut, false);
+                        return Imgd.Create(bitmap.Size, Imaging.PixelFormat.Indexed8, destBits, clut, swizzle);
                     }
                 case 32:
                     {
@@ -325,19 +336,19 @@ namespace OpenKh.Command.ImgTool.Utils
                             }
                         }
 
-                        return Imgd.Create(bitmap.Size, Imaging.PixelFormat.Rgba8888, destBits, new byte[0], false);
+                        return Imgd.Create(bitmap.Size, Imaging.PixelFormat.Rgba8888, destBits, new byte[0], swizzle);
                     }
             }
             throw new NotSupportedException($"BitsPerPixel {bpp} not recognized!");
         }
 
-        public static IEnumerable<Imgd> FromFileToImgdList(string anyFile, int bitsPerPixel, Func<Bitmap, Bitmap> quantizer)
+        public static IEnumerable<Imgd> FromFileToImgdList(string anyFile, int bitsPerPixel, Func<Bitmap, Bitmap> quantizer, bool swizzle)
         {
             switch (Path.GetExtension(anyFile).ToLowerInvariant())
             {
                 case ".png":
                     {
-                        yield return new Bitmap(anyFile).Using(bitmap => ToImgd(bitmap, bitsPerPixel, quantizer));
+                        yield return new Bitmap(anyFile).Using(bitmap => ToImgd(bitmap, bitsPerPixel, quantizer, swizzle));
                         break;
                     }
                 case ".imd":
@@ -360,7 +371,7 @@ namespace OpenKh.Command.ImgTool.Utils
         {
             switch (bitmap.PixelFormat)
             {
-                case System.Drawing.Imaging.PixelFormat.Format4bppIndexed:
+                case PixelFormat.Format4bppIndexed:
                     {
                         var destHeight = bitmap.Height;
                         var destStride = (bitmap.Width + 1) & (~1);
@@ -395,7 +406,7 @@ namespace OpenKh.Command.ImgTool.Utils
 
                         return Imgd.Create(bitmap.Size, Imaging.PixelFormat.Indexed4, destBits, clut, false);
                     }
-                case System.Drawing.Imaging.PixelFormat.Format8bppIndexed:
+                case PixelFormat.Format8bppIndexed:
                     {
                         var destHeight = bitmap.Height;
                         var destStride = bitmap.Width;

@@ -84,6 +84,12 @@ namespace OpenKh.Common
         public static float ReadSingle(this Stream stream) =>
             new BinaryReader(stream).ReadSingle();
 
+        public static float ReadFloat(this Stream stream) =>
+            new BinaryReader(stream).ReadSingle();
+
+        public static double ReadDouble(this Stream stream) =>
+            new BinaryReader(stream).ReadDouble();
+
         public static List<int> ReadInt32List(this Stream stream, int offset, int count)
         {
             stream.Position = offset;
@@ -139,6 +145,16 @@ namespace OpenKh.Common
             stream.Write(data, 0, data.Length);
 
         public static int Write(this Stream stream, IEnumerable<int> items)
+        {
+            var oldPosition = (int)stream.Position;
+            var writer = new BinaryWriter(stream);
+            foreach (var item in items)
+                writer.Write(item);
+
+            return (int)stream.Position - oldPosition;
+        }
+
+        public static int Write(this Stream stream, IEnumerable<ushort> items)
         {
             var oldPosition = (int)stream.Position;
             var writer = new BinaryWriter(stream);

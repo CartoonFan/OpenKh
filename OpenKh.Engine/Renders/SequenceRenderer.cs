@@ -1,21 +1,48 @@
-﻿using OpenKh.Engine.Renders;
+using OpenKh.Engine.Renders;
 using OpenKh.Kh2;
 using System;
-using System.Drawing;
-using System.Net.Sockets;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace OpenKh.Engine.Renderers
 {
+    public enum TextAnchor
+    {
+        BottomLeft,
+        BottomCenter,
+        BottomRight,
+        Center,
+        TopCenter,
+        TopLeft
+    }
+
     public class SequenceRenderer
     {
+        public class ChildContext
+        {
+            public float PositionX { get; set; }
+            public float PositionY { get; set; }
+            public ColorF Color { get; set; }
+            public float TextPositionX { get; set; }
+            public float TextPositionY { get; set; }
+            public float TextScale { get; set; }
+            public float UiSize { get; set; }
+            public float UiPadding { get; set; }
+        }
+
         private class Context
         {
             public int GlobalFrameIndex { get; set; }
             public int FrameIndex { get; set; }
             public float PositionX { get; set; }
             public float PositionY { get; set; }
+            public float PivotX { get; set; }
+            public float PivotY { get; set; }
             public float ScaleX { get; set; }
             public float ScaleY { get; set; }
+            public float RotationX { get; set; }
+            public float RotationY { get; set; }
+            public float RotationZ { get; set; }
             public ColorF Color { get; set; }
             public int ColorBlendMode { get; set; }
             public float Left { get; set; }
@@ -29,8 +56,13 @@ namespace OpenKh.Engine.Renderers
                 FrameIndex = FrameIndex,
                 PositionX = PositionX,
                 PositionY = PositionY,
+                PivotX = PivotX,
+                PivotY = PivotY,
                 ScaleX = ScaleX,
                 ScaleY = ScaleY,
+                RotationX = RotationX,
+                RotationY = RotationY,
+                RotationZ = RotationZ,
                 Color = Color,
                 ColorBlendMode = ColorBlendMode,
                 Left = Left,
@@ -40,61 +72,67 @@ namespace OpenKh.Engine.Renderers
             };
         }
 
-        private const int LinearInterpolationFlag = 0x00000001;
-        private const int ScalingFlag = 0x00000040;
-        private const int ColorMaskingFlag = 0x00000400;
-        private const int ColorInterpolationFlag = 0x00000080;
-        private const int TraslateFlag = 0x00004000;
-
-        private readonly Sequence sequence;
         private readonly ISpriteDrawing drawing;
         private readonly ISpriteTexture surface;
 
+        public Sequence Sequence { get; }
+        public ChildContext CurrentChildContext { get; } = new ChildContext();
+
         public SequenceRenderer(Sequence sequence, ISpriteDrawing drawing, ISpriteTexture surface)
         {
-            this.sequence = sequence;
             this.drawing = drawing;
             this.surface = surface;
+            Sequence = sequence;
+            DebugSequenceRenderer = new DefaultDebugSequenceRenderer();
         }
 
-        public void Draw(int animationGroupIndex, int frameIndex, float positionX, float positionY) =>
+        public IDebugSequenceRenderer DebugSequenceRenderer { get; set; }
+
+        public bool Draw(int animationGroupIndex, int frameIndex, float positionX, float positionY, float alpha = 1f) =>
             DrawAnimationGroup(new Context
             {
                 GlobalFrameIndex = frameIndex,
                 FrameIndex = frameIndex,
                 PositionX = positionX,
-                PositionY = positionY
-            }, sequence.AnimationGroups[animationGroupIndex]);
+                PositionY = positionY,
+                Color = new ColorF(1f, 1f, 1f, alpha)
+            }, Sequence.AnimationGroups[animationGroupIndex]);
 
-        private void DrawAnimationGroup(Context contextParent, Sequence.AnimationGroup animationGroup)
+        public int GetActualFrame(Sequence.AnimationGroup animationGroup, int frameIndex)
         {
-            var index = animationGroup.AnimationIndex;
-            var count = animationGroup.Count;
-            var context = contextParent.Clone();
+            CurrentChildContext.TextPositionX = animationGroup.TextPositionX;
+            CurrentChildContext.TextPositionY = animationGroup.TextPositionY;
+            CurrentChildContext.TextScale = animationGroup.TextScale;
+            CurrentChildContext.UiSize = animationGroup.LightPositionX;
+            CurrentChildContext.UiPadding = animationGroup.UiPadding;
 
-            if (animationGroup.DoNotLoop == 0)
-            {
-                var frameEnd = animationGroup.LoopEnd;
-                if (frameEnd == 0)
-                {
-                    for (var i = 0; i < count; i++)
-                    {
-                        frameEnd = Math.Max(frameEnd, sequence.Animations[index + i].FrameEnd);
-                    }
-                }
+            if (animationGroup.DoNotLoop != 0)
+                return frameIndex;
 
-                context.FrameIndex = Loop(animationGroup.LoopStart, frameEnd, context.FrameIndex);
-            }
+            var frameEnd = animationGroup.LoopEnd;
+            if (frameEnd == 0 && animationGroup.Animations.Count > 0)
+                frameEnd = animationGroup.Animations.Max(x => x.FrameEnd);
 
-            for (var i = 0; i < count; i++)
-            {
-                DrawAnimation(context, sequence.Animations[index + i]);
-            }
+            return Loop(animationGroup.LoopStart, frameEnd, frameIndex);
         }
 
-        private void DrawAnimation(Context contextParent, Sequence.Animation animation)
+        private bool DrawAnimationGroup(Context contextParent, Sequence.AnimationGroup animationGroup)
         {
-            // 0000 0001 = (0 = CUBIC INTERPOLATION, 1 = LINEAR INTERPOLATION)
+            var context = contextParent.Clone();
+            context.FrameIndex = GetActualFrame(animationGroup, context.FrameIndex);
+
+            for (int i = 0; i < animationGroup.Animations.Count; i++)
+            {
+                DrawAnimation(context, animationGroup.Animations[i], i);
+            }
+
+            return animationGroup.DoNotLoop == 0 ||
+                context.FrameIndex < animationGroup.Animations.Max(x => x.FrameEnd);
+        }
+
+        private void DrawAnimation(Context contextParent, Sequence.Animation animation, int index)
+        {
+            // 0000 0001 = (0 = EASE IN/OUT INTERPOLATION, 1 = LINEAR INTERPOLATION)
             // 0000 0008 = (0 = BOUNCING START FROM CENTER, 1 = BOUNCING START FROM X / MOVE FROM Y)
             // 0000 0010 = (0 = ENABLE BOUNCING, 1 = IGNORE BOUNCING)
             // 0000 0020 = (0 = ENABLE ROTATION, 1 = IGNORE ROTATION)
@@ -112,16 +150,27 @@ namespace OpenKh.Engine.Renderers
             float t;
 
             // loc_23B030
-            if ((animation.Flags & LinearInterpolationFlag) != 0)
+            if ((animation.Flags & Sequence.LinearInterpolationFlag) != 0)
                 t = (float)delta;
             else
-                t = (float)(delta * delta * delta);
+                t = (float)((Math.Sin(delta * Math.PI - Math.PI / 2.0) + 1.0) / 2.0);
 
-            context.PositionX += Lerp(t, animation.Xa0, animation.Xa1);
-            context.PositionY += Lerp(t, animation.Ya0, animation.Ya1);
             context.ColorBlendMode = animation.ColorBlend;
 
-            if ((animation.Flags & ScalingFlag) == 0)
+            var translateX = Lerp(t, animation.TranslateXStart, animation.TranslateXEnd);
+            var translateY = Lerp(t, animation.TranslateYStart, animation.TranslateYEnd);
+            if ((animation.Flags & Sequence.TranslationFlag) == 0)
+            {
+                context.PositionX += translateX;
+                context.PositionY += translateY;
+            }
+            else
+            {
+                context.PositionX += animation.TranslateXStart;
+                context.PositionY += animation.TranslateYStart;
+            }
+
+            if ((animation.Flags & Sequence.ScalingFlag) == 0)
             {
                 var scale = Lerp(t, animation.ScaleStart, animation.ScaleEnd);
                 var scaleX = Lerp(t, animation.ScaleXStart, animation.ScaleXEnd);
@@ -135,60 +184,98 @@ namespace OpenKh.Engine.Renderers
                 context.ScaleY = 1.0f;
             }
 
-            if ((animation.Flags & ColorMaskingFlag) == 0)
+            if ((animation.Flags & Sequence.ColorMaskingFlag) == 0)
             {
-                if ((animation.Flags & ColorInterpolationFlag) == 0)
+                if ((animation.Flags & Sequence.ColorInterpolationFlag) == 0)
                 {
-                    context.Color = Lerp(t,
+                    context.Color *= Lerp(t,
                         ConvertColor(animation.ColorStart),
                         ConvertColor(animation.ColorEnd));
                 }
                 else
                 {
-                    context.Color = ConvertColor(animation.ColorStart);
+                    context.Color *= ConvertColor(animation.ColorStart);
                 }
             }
             else
-                context.Color = ConvertColor(animation.ColorStart);
+                context.Color *= new ColorF(1, 1, 1, 1);
 
-            if ((animation.Flags & TraslateFlag) == 0)
+            if ((animation.Flags & Sequence.RotationFlag) == 0)
             {
-                context.PositionX += Lerp(t, animation.Xb0, animation.Xb1);
-                context.PositionY += Lerp(t, animation.Yb0, animation.Yb1);
+                context.RotationX = Lerp(t, animation.RotationXStart, animation.RotationXEnd);
+                context.RotationY = Lerp(t, animation.RotationYStart, animation.RotationYEnd);
+                context.RotationZ = Lerp(t, animation.RotationZStart, animation.RotationZEnd);
+            }
+
+            if ((animation.Flags & Sequence.PivotFlag) == 0)
+            {
+                context.PivotX += Lerp(t, animation.PivotXStart, animation.PivotXEnd);
+                context.PivotY += Lerp(t, animation.PivotYStart, animation.PivotYEnd);
+            }
+
+            if ((animation.Flags & Sequence.BouncingFlag) == 0)
+            {
+                var bounceXValue = (float)Math.Sin(Lerp(delta * animation.BounceXSpeed, 0, Math.PI));
+                var bounceYValue = (float)Math.Sin(Lerp(delta * animation.BounceYSpeed, 0, Math.PI));
+
+                context.PositionX += bounceXValue * Lerp(t, animation.BounceXStart, animation.BounceXEnd);
+                context.PositionY += bounceYValue * Lerp(t, animation.BounceYStart, animation.BounceYEnd);
+            }
+
+            context.Color *= DebugSequenceRenderer.GetAnimationBlendColor(index);
+
+            if ((animation.Flags & Sequence.CanHostChildFlag) != 0)
+            {
+                CurrentChildContext.PositionX = context.PositionX + context.PivotX;
+                CurrentChildContext.PositionY = context.PositionY + context.PivotY;
+                CurrentChildContext.Color = context.Color;
+
+                // Horrible hack. Basically if TranslationFlag disallow to us the translation
+                // animation, the frame group just uses Translate*Start, but the attached
+                // child context still needs to use the animation.
+                if ((animation.Flags & Sequence.TranslationFlag) != 0)
+                {
+                    CurrentChildContext.PositionX += translateX - animation.TranslateXStart;
+                    CurrentChildContext.PositionY += translateY - animation.TranslateYStart;
+                }
             }
 
             // CALCULATE TRANSOFRMATIONS AND INTERPOLATIONS
-            DrawFrameGroup(context, sequence.FrameGroups[animation.FrameGroupIndex]);
+            DrawFrameGroup(context, Sequence.SpriteGroups[animation.SpriteGroupIndex]);
         }
 
-        private void DrawFrameGroup(Context context, Sequence.FrameGroup frameGroup)
+        private void DrawFrameGroup(Context context, List<Sequence.SpritePart> spriteGroup)
         {
-            var index = frameGroup.Start;
-            var count = frameGroup.Count;
-            for (var i = 0; i < count; i++)
+            foreach (var spritePart in spriteGroup)
             {
-                DrawFrameExtended(context, sequence.FramesEx[index + i]);
+                DrawFrameExtended(context, spritePart);
             }
         }
 
-        private void DrawFrameExtended(Context contextParent, Sequence.FrameEx frameEx)
+        private void DrawFrameExtended(Context contextParent, Sequence.SpritePart frameEx)
         {
             var context = contextParent.Clone();
-            context.Left = frameEx.Left * context.ScaleX;
-            context.Top = frameEx.Top * context.ScaleY;
-            context.Right = frameEx.Right * context.ScaleX;
-            context.Bottom = frameEx.Bottom * context.ScaleY;
+            context.Left = frameEx.Left;
+            context.Top = frameEx.Top;
+            context.Right = frameEx.Right;
+            context.Bottom = frameEx.Bottom;
 
-            DrawFrame(context, sequence.Frames[frameEx.FrameIndex]);
+            DrawFrame(context, Sequence.Sprites[frameEx.SpriteIndex]);
         }
 
-        private void DrawFrame(Context context, Sequence.Frame frame)
+        private void DrawFrame(Context context, Sequence.Sprite frame)
         {
             var drawContext = new SpriteDrawingContext()
                 .SpriteTexture(surface)
                 .SourceLTRB(frame.Left, frame.Top, frame.Right, frame.Bottom)
-                .Position(context.PositionX + context.Left, context.PositionY + context.Top)
-                .DestinationSize(context.Right - context.Left, context.Bottom - context.Top);
+                .Position(context.Left, context.Top)
+                .DestinationSize(context.Right - context.Left, context.Bottom - context.Top)
+                .Traslate(context.PivotX, context.PivotY)
+                .ScaleSize(context.ScaleX, context.ScaleY)
+                .RotateX(-context.RotationX)
+                .RotateY(-context.RotationY)
+                .RotateZ(-context.RotationZ)
+                .Traslate(context.PositionX, context.PositionY);
 
             drawContext.Color0 = ConvertColor(frame.ColorLeft);
             drawContext.Color1 = ConvertColor(frame.ColorTop);

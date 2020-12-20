@@ -1,4 +1,4 @@
-﻿using OpenKh.Common;
+using OpenKh.Common;
 using OpenKh.Kh2;
 using System.IO;
 using System.Linq;
@@ -19,6 +19,7 @@ namespace OpenKh.Tests.kh2
 
         [Theory]
         [InlineData("50worldmap")]
+        [InlineData("sample2")]
         public void TestDecompression(string fileName)
         {
             using (var fileCompressed = File.OpenRead($"kh2/res/{fileName}.cmp"))
@@ -43,6 +44,7 @@ namespace OpenKh.Tests.kh2
 
         [Theory]
         [InlineData("50worldmap")]
+        [InlineData("sample2")]
         public void CompressCorrectly(string fileName) =>
             File.OpenRead($"kh2/res/{fileName}.dec").Using(stream =>
             {
@@ -51,17 +53,15 @@ namespace OpenKh.Tests.kh2
             });
 
         [Theory]
-        [InlineData("50worldmap")]
-        public void CompressAtLEastEquallyOrMore(string fileName) =>
+        [InlineData("50worldmap", 0x16d)]
+        [InlineData("sample2", 0x4ac)]
+        public void CompressEquallyOrBetter(string fileName, int expectLength) =>
             File.OpenRead($"kh2/res/{fileName}.dec").Using(stream =>
             {
-                const int CompressionGrace = 6;
-                const int OriginalCompressedSizeLength = 0x167 + CompressionGrace;
-
                 var compress = Img.Compress(stream.ReadAllBytes());
-                if (compress.Length > OriginalCompressedSizeLength)
+                if (compress.Length > expectLength)
                 {
-                    throw new XunitException($"Compressed file is {compress.Length} byte, but the official one is {OriginalCompressedSizeLength}.\n" +
+                    throw new XunitException($"Compressed file is {compress.Length} byte, but the official one is {expectLength}.\n" +
                         "The compression algorithm is not performant enough.");
                 }
             });
@@ -75,19 +75,10 @@ namespace OpenKh.Tests.kh2
             });
 
         [Fact]
-        public void CompressChunkSimple()
+        public void CreateEmptyFileIfCompressedSourceIsEmpty()
         {
-            const int HeaderSize = 5;
-            var dec = new byte[0x29];
-            var cmp = Img.Compress(dec);
-
-            var expected = new byte[]
-            {
-                0x25, 0x01, 0x01, 0x00
-            };
-
-            Assert.Equal(expected.Length, cmp.Length - HeaderSize);
-            Assert.Equal(expected, cmp.Take(cmp.Length - HeaderSize));
+            var input = Enumerable.Range(0, 0x1000).Select(_ => (byte)0).ToArray();
+            Assert.Empty(Img.Decompress(input));
         }
 
         public void AlwaysCompressCorrectly()

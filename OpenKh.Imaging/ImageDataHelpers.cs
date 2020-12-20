@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 
 namespace OpenKh.Imaging
@@ -63,10 +63,7 @@ namespace OpenKh.Imaging
                 case PixelFormat.Indexed8:
                     break;
                 case PixelFormat.Indexed4:
-                    for (var i = 0; i < length / 2; i++)
-                    {
-                        data[i] = (byte)(((data[i] & 0x0F) << 4) | (data[i] >> 4));
-                    }
+                    // no pixel swapping is required
                     break;
                 default:
                     throw new ArgumentOutOfRangeException($"The format {pixelFormat} is invalid or not supported.");
@@ -100,16 +97,19 @@ namespace OpenKh.Imaging
                 case PixelFormat.Indexed8:
                     return data;
                 case PixelFormat.Indexed4:
-                    for (var i = 0; i < length / 2; i++)
-                    {
-                        dst[i] = (byte)(((data[i] & 0x0F) << 4) | (data[i] >> 4));
-                    }
-                    break;
+                    // no pixel swapping is required
+                    return data;
                 default:
                     throw new ArgumentOutOfRangeException($"The format {pixelFormat} is invalid or not supported.");
             }
 
             return dst;
+        }
+
+        public static void SwapEndianIndexed4(byte[] data)
+        {
+            for (var i = 0; i < data.Length; i++)
+                data[i] = (byte)(((data[i] & 0x0F) << 4) | (data[i] >> 4));
         }
     }
 }

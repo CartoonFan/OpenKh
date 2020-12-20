@@ -1,6 +1,6 @@
 ﻿using OpenKh.Kh2;
-using static OpenKh.Kh2.Bar;
 using System.Collections.Generic;
+using static OpenKh.Kh2.Bar;
 
 namespace OpenKh.Tools.BarEditor
 {
@@ -14,30 +14,30 @@ namespace OpenKh.Tools.BarEditor
                 [EntryType.Dummy] = "dummy",
                 [EntryType.Binary] = "bin",
                 [EntryType.List] = "list",
-                [EntryType.Ai] = "ai",
+                [EntryType.Bdx] = "bdx",
                 [EntryType.Model] = "model",
-                [EntryType.MeshOcclusion] = "doct",
-                [EntryType.MapCollision] = "coct",
-                [EntryType.ModelTexture] = "modeltexture",
+                [EntryType.MeshOcclusion] = "ocd",
+                [EntryType.MapCollision] = "occ",
+                [EntryType.ModelTexture] = "texture",
                 [EntryType.Dpx] = "dpx",
-                [EntryType.AnimationData] = "animation",
-                [EntryType.Texture] = "texture",
-                [EntryType.CameraCollision] = "coctcamera",
+                [EntryType.Motion] = "motion",
+                [EntryType.Tim2] = "tm2",
+                [EntryType.CameraCollision] = "och",
                 [EntryType.SpawnPoint] = "spawnpoint",
                 [EntryType.SpawnScript] = "spawnscript",
-                [EntryType.MapColorDiffuse] = "colordiffuse",
-                [EntryType.LightData] = "coctlight",
-                [EntryType.Anb] = "Anb",
-                [EntryType.Bar] = "bar",
+                [EntryType.FogColor] = "fog",
+                [EntryType.LightData] = "ocl",
+                [EntryType.MotionTriggers] = "triggers",
+                [EntryType.Anb] = "anb",
                 [EntryType.Pax] = "pax",
-                [EntryType.MapCollision2] = "coctmap",
-                [EntryType.AnimationLimit] = "animlimit",
-                [EntryType.Unknown21] = "unk21",
+                [EntryType.MapCollision2] = "owa",
+                [EntryType.Motionset] = "mset",
+                [EntryType.BgObjPlacement] = "bop",
                 [EntryType.AnimationLoader] = "animload",
                 [EntryType.ModelCollision] = "coctmodel",
                 [EntryType.Imgd] = "imd",
-                [EntryType.Seqd] = "2dd",
-                [EntryType.Layout] = "2ld",
+                [EntryType.Seqd] = "sqd",
+                [EntryType.Layout] = "lad",
                 [EntryType.Imgz] = "imz",
                 [EntryType.AnimationMap] = "mapanim",
                 [EntryType.Seb] = "seb",
@@ -57,7 +57,6 @@ namespace OpenKh.Tools.BarEditor
                 [EntryType.BarUnknown] = "bar",
                 [EntryType.Vibration] = "vibration",
                 [EntryType.Vag] = "vag",
-
             };
 
         public static string GetSuggestedExtension(Bar.EntryType type) =>
